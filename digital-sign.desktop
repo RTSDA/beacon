@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name= Beacon Digital Signage
+Comment=Digital signage for church events
+Exec=/usr/local/bin/beacon
+Icon=appicon.png
+Terminal=false
+Type=Application
+Categories=Office;Graphics;
+StartupNotify=true

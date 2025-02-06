@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Beacon
+Comment=Digital signage application for church events
+Exec=/usr/local/bin/beacon
+Icon=beacon
+Terminal=false
+Categories=Office;Graphics;
+Keywords=church;events;signage;display
+StartupNotify=true 
