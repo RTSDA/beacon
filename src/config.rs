@@ -5,7 +5,7 @@ use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
-    pub pocketbase_url: String,
+    pub api_url: String,
     pub window_width: i32,
     pub window_height: i32,
     pub slide_interval_seconds: u64,
@@ -40,7 +40,7 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            pocketbase_url: String::from("https://pocketbase.rockvilletollandsda.church"),
+            api_url: String::from("https://api.rockvilletollandsda.church"),
             window_width: 1920,
             window_height: 1080,
             slide_interval_seconds: 10,

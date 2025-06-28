@@ -1,7 +1,7 @@
 mod config;
 mod pocketbase;
 
-use crate::pocketbase::PocketbaseEvent;
+use crate::pocketbase::ApiEvent;
 use iced::widget::{column, row, image, container, text};
 use iced::{
     window, Element,
@@ -24,8 +24,8 @@ static SETTINGS: Lazy<config::Settings> = Lazy::new(|| {
     })
 });
 
-static POCKETBASE_CLIENT: Lazy<pocketbase::PocketbaseClient> = Lazy::new(|| {
-    pocketbase::PocketbaseClient::new(SETTINGS.pocketbase_url.clone())
+static API_CLIENT: Lazy<pocketbase::ApiClient> = Lazy::new(|| {
+    pocketbase::ApiClient::new(SETTINGS.api_url.clone())
 });
 
 // Define some constants for styling
@@ -41,7 +41,7 @@ const TIME_COLOR: Color = Color::from_rgb(0.8, 0.8, 0.95); // Soft purple-grey
 const LOCATION_ICON_COLOR: Color = Color::from_rgb(0.6, 0.4, 0.9); // Brighter purple
 const IMAGE_BG_COLOR: Color = Color::from_rgb(0.08, 0.08, 0.12); // Slightly lighter than background
 const LOADING_FRAMES: [&str; 4] = ["⠋", "⠙", "⠹", "⠸"];
-const MAX_IMAGE_SIZE: u64 = 500 * 1024; // 500KB limit
+const MAX_IMAGE_SIZE: u64 = 2 * 1024 * 1024; // 2MB limit
 
 #[derive(Debug)]
 struct DigitalSign {
@@ -160,6 +160,13 @@ impl IcedProgram for DigitalSign {
                 tracing::info!("Cleared all existing images");
                 
                 state.events = events;
+                
+                // Reset current event index if needed
+                if state.current_event_index >= state.events.len() && !state.events.is_empty() {
+                    tracing::info!("Resetting current event index from {} to 0", state.current_event_index);
+                    state.current_event_index = 0;
+                }
+                
                 state.last_refresh = Instant::now();
                 state.is_fetching = false;
                 
@@ -398,50 +405,38 @@ impl Message {
 }
 
 async fn fetch_events() -> Result<Vec<Event>, anyhow::Error> {
-    tracing::info!("Starting to fetch events from Pocketbase");
-    let pb_events = match POCKETBASE_CLIENT.fetch_events().await {
+    tracing::info!("Starting to fetch upcoming events from API");
+    let api_events = match API_CLIENT.fetch_events().await {
         Ok(events) => {
-            tracing::info!("Successfully fetched {} events from Pocketbase", events.len());
+            tracing::info!("Successfully fetched {} upcoming events from API", events.len());
             events
         },
         Err(e) => {
-            tracing::error!("Failed to fetch events from Pocketbase: {}", e);
+            tracing::error!("Failed to fetch events from API: {}", e);
             return Err(e);
         }
     };
     
-    // Use a 12-hour window for filtering
-    let now = chrono::Utc::now() - chrono::Duration::hours(12);
-    let mut events: Vec<Event> = pb_events
+    // Convert API events to display events (no filtering needed since /upcoming endpoint handles it)
+    let mut events: Vec<Event> = api_events
         .into_iter()
-        .filter(|event| {
-            let is_current = event.end_time > now;
-            if !is_current {
-                tracing::info!(
-                    "Filtering out event '{}' with end time {} (now is {})",
-                    event.title,
-                    event.end_time,
-                    now
-                );
-            }
-            is_current
-        })
         .map(Event::from)
         .collect();
 
     if events.is_empty() {
-        tracing::warn!("No current or future events found");
+        tracing::warn!("No upcoming events found");
     } else {
         tracing::info!(
-            "Found {} events, from {} to {}", 
+            "Found {} upcoming events, from {} to {}", 
             events.len(),
             events.first().map(|e| e.date.as_str()).unwrap_or("unknown"),
             events.last().map(|e| e.date.as_str()).unwrap_or("unknown")
         );
     }
 
+    // Sort by start time (API should already provide them sorted, but ensure consistency)
     events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-    tracing::info!("Processed and sorted {} current/future events", events.len());
+    tracing::info!("Processed {} upcoming events", events.len());
     Ok(events)
 }
 
@@ -492,8 +487,8 @@ async fn load_image(url: String) -> image::Handle {
     }
 }
 
-impl From<PocketbaseEvent> for Event {
-    fn from(event: PocketbaseEvent) -> Self {
+impl From<ApiEvent> for Event {
+    fn from(event: ApiEvent) -> Self {
         let clean_description = html2text::from_read(event.description.as_bytes(), 80)
             .replace('\n', " ")
             .split_whitespace()
@@ -504,16 +499,10 @@ impl From<PocketbaseEvent> for Event {
         let start_time = event.start_time.format("%I:%M %p").to_string().trim_start_matches('0').to_string();
         let end_time = event.end_time.format("%I:%M %p").to_string().trim_start_matches('0').to_string();
 
-        let image_url = event.image.map(|img| {
-            let url = format!(
-                "{}/api/files/events/{}/{}",
-                SETTINGS.pocketbase_url,
-                event.id,
-                img
-            );
-            tracing::info!("Constructed image URL: {}", url);
-            url
-        });
+        let image_url = event.image.clone();
+        if let Some(ref url) = image_url {
+            tracing::info!("Using image URL: {}", url);
+        }
 
         Self {
             title: event.title,
@@ -537,7 +526,7 @@ fn main() -> iced::Result {
         .init();
 
     tracing::info!("Starting Beacon Digital Signage");
-    tracing::info!("Pocketbase URL: {}", SETTINGS.pocketbase_url);
+    tracing::info!("API URL: {}", SETTINGS.api_url);
 
     // Load the icon file
     let icon_data = {
