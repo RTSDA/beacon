@@ -314,8 +314,9 @@ impl IcedProgram for DigitalSign {
                 if !event.location.is_empty() {
                     container(
                         row![
-                            text("⌾")  // Using a more compatible location/target symbol
+                            text("⌾")  // Location/target symbol
                                 .size(48)
+                                .font(iced::Font::with_name("Segoe UI Symbol"))
                                 .style(|_: &Theme| text::Style { color: Some(LOCATION_ICON_COLOR), ..Default::default() }),
                             text(&event.location)
                                 .size(48)
@@ -591,10 +592,22 @@ fn main() -> iced::Result {
         ..Default::default()
     };
 
+    // Load additional fonts for better Unicode support
+    let fonts = vec![
+        // Try to load Segoe UI Symbol for Windows emoji/symbols
+        std::fs::read("/usr/share/fonts/truetype/Microsoft-365-Fonts/Segoe UI Symbol.ttf").ok(),
+        // Try to load Noto Sans Symbols2 for extended Unicode
+        std::fs::read("/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf").ok(),
+        // Try to load Apple Color Emoji if available
+        std::fs::read("/usr/share/fonts/apple/Apple Color Emoji.ttc").ok(),
+        // Try to load FreeSans as fallback
+        std::fs::read("/usr/share/fonts/truetype/freefont/FreeSans.ttf").ok(),
+    ].into_iter().filter_map(|f| f).map(|bytes| std::borrow::Cow::Owned(bytes)).collect();
+
     let settings = Settings {
        // window: window_settings,
         //flags: (),
-        fonts: vec![],
+        fonts,
         default_font: iced::Font::default(),
         antialiasing: true,
         ..Default::default()
